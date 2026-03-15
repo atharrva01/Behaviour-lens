@@ -1,0 +1,7 @@
+Backend/.gocache/
+Backend/.gomodcache/
+Backend/server.exe
+Backend/simulator.exe
+Frontend/node_modules/
+Frontend/dist/
+Frontend/.npm-cache/

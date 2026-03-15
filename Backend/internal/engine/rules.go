@@ -254,7 +254,10 @@ func hasRecentCheckoutEvent(events []models.Event) bool {
 // "confirm" and "purchase" are the terminal success actions.
 func hasCompletionEvent(events []models.Event) bool {
 	for _, e := range events {
-		if e.Action == "confirm" || e.Action == "purchase" {
+		if e.Action == models.ActionConfirm || e.Action == models.ActionPurchase {
+			return true
+		}
+		if e.Action == models.ActionNavigate && e.Page == "/confirm" {
 			return true
 		}
 	}

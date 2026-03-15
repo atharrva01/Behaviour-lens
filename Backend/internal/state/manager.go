@@ -4,6 +4,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
 	"behaviourlens/internal/models"
 )
 
@@ -73,11 +74,11 @@ func (sm *StateManager) ProcessEvent(e models.Event) models.UserState {
 	// It is rebuilt from the surviving window after trimEvents runs,
 	// so it always reflects only the current window — never stale history.
 
-	if e.Action == "tab_hidden" {
+	if e.Action == models.ActionTabHidden {
 		state.TabVisible = false
 	}
 
-	if e.Action == "tab_visible" {
+	if e.Action == models.ActionTabVisible {
 		state.TabVisible = true
 	}
 
