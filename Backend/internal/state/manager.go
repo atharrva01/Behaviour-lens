@@ -232,6 +232,22 @@ func (sm *StateManager) GetPatterns(limit int) []models.Pattern {
 	return result
 }
 
+// ResolvePattern marks a pattern as resolved by ID.
+// Returns the updated pattern and true if found; zero value and false otherwise.
+// The resolved pattern should be re-broadcast so the dashboard can update live.
+func (sm *StateManager) ResolvePattern(id string) (models.Pattern, bool) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	for i := range sm.patterns {
+		if sm.patterns[i].PatternID == id {
+			sm.patterns[i].Resolved = true
+			return sm.patterns[i], true
+		}
+	}
+	return models.Pattern{}, false
+}
+
 // GetMetrics returns a point-in-time SystemMetrics snapshot.
 // Atomic counters are read without holding mu; the states map is read under RLock.
 func (sm *StateManager) GetMetrics() models.SystemMetrics {

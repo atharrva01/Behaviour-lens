@@ -7,7 +7,7 @@ import (
 	"behaviourlens/internal/models"
 )
 
-// now returns the current epoch milliseconds.
+// nowMs returns the current epoch milliseconds.
 func nowMs() int64 { return time.Now().UnixMilli() }
 
 // makeEvent is a test helper to construct an Event with the given fields.
@@ -30,6 +30,7 @@ func TestHesitationLowSeverity(t *testing.T) {
 	state := models.UserState{
 		UserID:          "u1",
 		CurrentPage:     "/checkout",
+		TabVisible:      true,
 		PageVisitCounts: map[string]int{},
 		Events: []models.Event{
 			makeEvent("u1", models.ActionIdle, "/checkout", now-100,
@@ -59,6 +60,7 @@ func TestHesitationMediumSeverity(t *testing.T) {
 	state := models.UserState{
 		UserID:          "u2",
 		CurrentPage:     "/payment",
+		TabVisible:      true,
 		PageVisitCounts: map[string]int{},
 		Events: []models.Event{
 			makeEvent("u2", models.ActionIdle, "/payment", now-100,
@@ -80,6 +82,7 @@ func TestHesitationHighSeverity(t *testing.T) {
 	state := models.UserState{
 		UserID:          "u3",
 		CurrentPage:     "/checkout",
+		TabVisible:      true,
 		PageVisitCounts: map[string]int{},
 		Events: []models.Event{
 			makeEvent("u3", models.ActionIdle, "/checkout", now-100,
@@ -101,6 +104,7 @@ func TestHesitationBelowThreshold(t *testing.T) {
 	state := models.UserState{
 		UserID:          "u4",
 		CurrentPage:     "/home",
+		TabVisible:      true,
 		PageVisitCounts: map[string]int{},
 		Events: []models.Event{
 			makeEvent("u4", models.ActionIdle, "/home", now-100,
@@ -122,6 +126,7 @@ func TestHesitationCooldown(t *testing.T) {
 	state := models.UserState{
 		UserID:          "u5",
 		CurrentPage:     "/checkout",
+		TabVisible:      true,
 		PageVisitCounts: map[string]int{},
 		Events: []models.Event{
 			makeEvent("u5", models.ActionIdle, "/checkout", now-100,
@@ -151,6 +156,7 @@ func TestHesitationWrongPage(t *testing.T) {
 	state := models.UserState{
 		UserID:          "u6",
 		CurrentPage:     "/checkout",
+		TabVisible:      true,
 		PageVisitCounts: map[string]int{},
 		Events: []models.Event{
 			makeEvent("u6", models.ActionIdle, "/cart", now-100,
@@ -162,6 +168,28 @@ func TestHesitationWrongPage(t *testing.T) {
 		if p.Type == models.PatternHesitation {
 			t.Fatal("should not fire hesitation for idle on a different page")
 		}
+	}
+}
+
+// ── tab hidden ────────────────────────────────────────────────────────────────
+
+func TestNoDetectionWhenTabHidden(t *testing.T) {
+	// Even with a qualifying idle event, no patterns should fire when TabVisible=false.
+	re := NewRuleEngine()
+	now := nowMs()
+	state := models.UserState{
+		UserID:          "u_hidden",
+		CurrentPage:     "/checkout",
+		TabVisible:      false, // tab is not visible
+		PageVisitCounts: map[string]int{},
+		Events: []models.Event{
+			makeEvent("u_hidden", models.ActionIdle, "/checkout", now-100,
+				map[string]string{"duration_ms": "45000"}),
+		},
+	}
+	patterns := re.Evaluate(state)
+	if len(patterns) != 0 {
+		t.Fatalf("expected 0 patterns when tab is hidden, got %d", len(patterns))
 	}
 }
 
@@ -181,6 +209,7 @@ func TestNavigationLoopDetected(t *testing.T) {
 	state := models.UserState{
 		UserID:      "u7",
 		CurrentPage: "/search",
+		TabVisible:  true,
 		PageVisitCounts: map[string]int{
 			"/search":   3, // meets loopMinVisits threshold
 			"/products": 1,
@@ -210,6 +239,7 @@ func TestNavigationLoopBelowThreshold(t *testing.T) {
 	state := models.UserState{
 		UserID:      "u8",
 		CurrentPage: "/search",
+		TabVisible:  true,
 		PageVisitCounts: map[string]int{
 			"/search": 2, // below loopMinVisits=3
 		},
@@ -236,6 +266,7 @@ func TestAbandonmentExplicit(t *testing.T) {
 	state := models.UserState{
 		UserID:        "u9",
 		CurrentPage:   "/checkout",
+		TabVisible:    true,
 		CheckoutDepth: 2,
 		PageVisitCounts: map[string]int{
 			"/checkout": 1,
@@ -268,6 +299,7 @@ func TestAbandonmentNavigateAway(t *testing.T) {
 	state := models.UserState{
 		UserID:        "u10",
 		CurrentPage:   "/home",
+		TabVisible:    true,
 		CheckoutDepth: 2,
 		PageVisitCounts: map[string]int{
 			"/checkout": 1,
@@ -297,6 +329,7 @@ func TestAbandonmentNotFiredAfterPurchase(t *testing.T) {
 	state := models.UserState{
 		UserID:        "u11",
 		CurrentPage:   "/confirm",
+		TabVisible:    true,
 		CheckoutDepth: 3,
 		PageVisitCounts: map[string]int{
 			"/payment": 1,
@@ -324,6 +357,7 @@ func TestAbandonmentNotFiredAfterConfirmPageNavigation(t *testing.T) {
 	state := models.UserState{
 		UserID:        "u11b",
 		CurrentPage:   "/home",
+		TabVisible:    true,
 		CheckoutDepth: 3,
 		PageVisitCounts: map[string]int{
 			"/payment": 1,
@@ -350,6 +384,7 @@ func TestAbandonmentRequiresCheckoutDepth(t *testing.T) {
 	state := models.UserState{
 		UserID:          "u12",
 		CurrentPage:     "/home",
+		TabVisible:      true,
 		CheckoutDepth:   1, // only at /cart — depth < 2
 		PageVisitCounts: map[string]int{"/cart": 1},
 		Events: []models.Event{
@@ -375,6 +410,7 @@ func TestNormalBrowsingNoPatterns(t *testing.T) {
 	state := models.UserState{
 		UserID:          "u13",
 		CurrentPage:     "/products",
+		TabVisible:      true,
 		CheckoutDepth:   0,
 		PageVisitCounts: map[string]int{"/products": 1, "/home": 1},
 		Events: []models.Event{

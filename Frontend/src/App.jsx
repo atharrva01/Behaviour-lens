@@ -8,446 +8,495 @@ import {
 } from "react";
 import { API_BASE_URL, fetchJSON } from "./api";
 
-const patternTone = {
-  hesitation: "tone-amber",
-  "navigation-loop": "tone-blue",
-  abandonment: "tone-red",
-};
+// ── Constants ───────────────────────────────────────────────────────────────
 
-const SNAPSHOT_INTERVAL_MS = 15000;
-const MAX_PATTERNS = 12;
-const MAX_ACTIVE_USERS = 10;
+const SNAPSHOT_INTERVAL_MS = 15_000;
+const MAX_PATTERNS = 100;
+const MAX_ACTIVE_USERS = 15;
 
-function formatRelativeTime(timestamp) {
-  const deltaSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-  if (deltaSeconds < 5) {
-    return "just now";
-  }
-  if (deltaSeconds < 60) {
-    return `${deltaSeconds}s ago`;
-  }
-
-  const minutes = Math.floor(deltaSeconds / 60);
-  if (minutes < 60) {
-    return `${minutes}m ago`;
-  }
-
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ago`;
+function formatRelativeTime(ts) {
+  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (s < 5)   return "just now";
+  if (s < 60)  return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60)  return `${m}m ago`;
+  return `${Math.floor(m / 60)}h ago`;
 }
 
-function formatPercent(value) {
-  return `${(value * 100).toFixed(1)}%`;
+function formatPercent(v) {
+  return `${(v * 100).toFixed(1)}%`;
 }
 
-function mergePatternFeed(current, nextPattern) {
-  return [nextPattern, ...current.filter((pattern) => pattern.pattern_id !== nextPattern.pattern_id)].slice(
-    0,
-    MAX_PATTERNS,
-  );
+function mergePatternFeed(current, next) {
+  return [next, ...current.filter((p) => p.pattern_id !== next.pattern_id)].slice(0, MAX_PATTERNS);
 }
 
-function mergeActiveUserFeed(current, nextUser) {
-  return [nextUser, ...current.filter((user) => user.user_id !== nextUser.user_id)].slice(
-    0,
-    MAX_ACTIVE_USERS,
-  );
+function mergeActiveUserFeed(current, next) {
+  return [next, ...current.filter((u) => u.user_id !== next.user_id)].slice(0, MAX_ACTIVE_USERS);
 }
 
-function formatEventLabel(event) {
-  if (!event) {
-    return "";
-  }
+// ── Header ───────────────────────────────────────────────────────────────────
 
-  const parts = [event.action, event.page];
-  if (event.metadata?.duration_ms) {
-    parts.push(`${Math.round(Number(event.metadata.duration_ms) / 1000)}s`);
-  }
-  return parts.join(" - ");
-}
-
-const MetricCard = memo(function MetricCard({ label, value, accent, helper }) {
+const Header = memo(function Header({ connectionStatus }) {
   return (
-    <article className={`metric-card ${accent}`}>
-      <span className="eyebrow">{label}</span>
-      <strong>{value}</strong>
-      <p>{helper}</p>
-    </article>
+    <header className="header">
+      <div className="header__brand">
+        <div className="header__logo">BL</div>
+        <span className="header__name">BehaviourLens</span>
+        <span className="header__tag">v0.1</span>
+      </div>
+
+      <div className="header__right">
+        <span className="header__url">{API_BASE_URL || "localhost:8080"}</span>
+        <div className={`status status--${connectionStatus}`}>
+          <span className="status__dot" />
+          <span>{connectionStatus}</span>
+        </div>
+      </div>
+    </header>
   );
 });
 
-const PatternCard = memo(function PatternCard({ pattern }) {
+// ── Metric card ──────────────────────────────────────────────────────────────
+
+const MetricCard = memo(function MetricCard({ label, value, accent, sub }) {
   return (
-    <article className={`pattern-card ${patternTone[pattern.type] || "tone-slate"}`}>
-      <div className="pattern-card__header">
-        <span className="pill">{pattern.type}</span>
-        <span className="pattern-card__severity">{pattern.severity}</span>
-      </div>
-      <h3>{pattern.page}</h3>
-      <p>{pattern.explanation}</p>
-      <div className="pattern-card__meta">
-        <span>{pattern.user_id}</span>
-        <span>{formatRelativeTime(pattern.detected_at)}</span>
-      </div>
-    </article>
+    <div className={`metric metric--${accent}`}>
+      <div className="metric__label">{label}</div>
+      <div className="metric__value">{value}</div>
+      <div className="metric__sub">{sub}</div>
+    </div>
   );
 });
 
-const UserRow = memo(function UserRow({ user, isSelected, onSelect }) {
+// ── Spotlight (latest pattern) ────────────────────────────────────────────────
+
+const Spotlight = memo(function Spotlight({ pattern }) {
+  if (!pattern) return null;
+  return (
+    <div className={`spotlight spotlight--${pattern.type}`}>
+      <div className="spotlight__bar" />
+      <div className="spotlight__body">
+        <div className="spotlight__label">Latest alert</div>
+        <div className="spotlight__page">{pattern.page}</div>
+        <div className="spotlight__expl">{pattern.explanation}</div>
+        <div className="spotlight__meta">
+          <span className="spotlight__user">{pattern.user_id}</span>
+          <span className="spotlight__time">{formatRelativeTime(pattern.detected_at)}</span>
+          <span className={`spotlight__sev spotlight__sev--${pattern.severity}`}>
+            {pattern.severity}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// ── Pattern row ───────────────────────────────────────────────────────────────
+
+const PatternRow = memo(function PatternRow({ pattern, onResolve }) {
+  return (
+    <div className={`prow prow--${pattern.type}${pattern.resolved ? " prow--resolved" : ""}`}>
+      <div className="prow__bar" />
+
+      <div className="prow__body">
+        <div className="prow__top">
+          <span className="prow__type">{pattern.type}</span>
+          <span className="prow__page">{pattern.page}</span>
+        </div>
+        <p className="prow__expl">{pattern.explanation}</p>
+        <div className="prow__foot">
+          <span className="prow__user">{pattern.user_id}</span>
+          <span className="prow__time">{formatRelativeTime(pattern.detected_at)}</span>
+        </div>
+      </div>
+
+      <div className="prow__side">
+        <span className={`sev-dot sev-dot--${pattern.severity}`} title={pattern.severity} />
+        {pattern.resolved ? (
+          <span className="resolved-chip">resolved</span>
+        ) : (
+          <button
+            type="button"
+            className="resolve-btn"
+            onClick={() => onResolve(pattern.pattern_id)}
+          >
+            resolve
+          </button>
+        )}
+      </div>
+    </div>
+  );
+});
+
+// ── User item ─────────────────────────────────────────────────────────────────
+
+const UserItem = memo(function UserItem({ user, isSelected, onSelect }) {
   return (
     <button
       type="button"
-      className={`user-row ${isSelected ? "user-row--selected" : ""}`}
+      className={`uitem${isSelected ? " uitem--selected" : ""}`}
       onClick={() => onSelect(user.user_id)}
     >
-      <div>
-        <span className="user-row__label">{user.user_id}</span>
-        <strong>{user.current_page}</strong>
+      <div className="uitem__left">
+        <span className="uitem__id">{user.user_id}</span>
+        <span className="uitem__page">{user.current_page}</span>
       </div>
-      <span className="user-row__time">{formatRelativeTime(user.last_seen)}</span>
+      <span className="uitem__time">{formatRelativeTime(user.last_seen)}</span>
     </button>
   );
 });
 
+// ── Event row ─────────────────────────────────────────────────────────────────
+
+const EventRow = memo(function EventRow({ event }) {
+  const durStr =
+    event.metadata?.duration_ms
+      ? ` · ${Math.round(Number(event.metadata.duration_ms) / 1000)}s`
+      : "";
+  return (
+    <div className="erow">
+      <span className="erow__action">{event.action}</span>
+      <span className="erow__page">{event.page}{durStr}</span>
+      <span className="erow__time">{formatRelativeTime(event.timestamp)}</span>
+    </div>
+  );
+});
+
+// ── App ───────────────────────────────────────────────────────────────────────
+
 export default function App() {
-  const [stats, setStats] = useState(null);
-  const [patterns, setPatterns] = useState([]);
-  const [activeUsers, setActiveUsers] = useState([]);
+  const [stats, setStats]                   = useState(null);
+  const [patterns, setPatterns]             = useState([]);
+  const [activeUsers, setActiveUsers]       = useState([]);
   const [connectionStatus, setConnectionStatus] = useState("connecting");
-  const [error, setError] = useState("");
-  const [filterType, setFilterType] = useState("all");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [error, setError]                   = useState("");
+  const [filterType, setFilterType]         = useState("all");
+  const [filterSeverity, setFilterSeverity] = useState("all");
+  const [searchTerm, setSearchTerm]         = useState("");
   const [selectedUserId, setSelectedUserId] = useState("");
   const [selectedUserEvents, setSelectedUserEvents] = useState([]);
-  const [userEventsStatus, setUserEventsStatus] = useState("idle");
-  const deferredPatterns = useDeferredValue(patterns);
+  const [userEventsStatus, setUserEventsStatus]     = useState("idle");
+
+  const deferredPatterns    = useDeferredValue(patterns);
   const deferredActiveUsers = useDeferredValue(activeUsers);
-  const deferredSearchTerm = useDeferredValue(searchTerm);
+  const deferredSearch      = useDeferredValue(searchTerm);
 
+  // ── Snapshot polling ────────────────────────────────────────────────────────
   useEffect(() => {
-    let isActive = true;
-    let intervalId;
+    let active = true;
+    let timer;
 
-    async function loadSnapshot() {
-      if (document.visibilityState === "hidden") {
-        return;
-      }
-
+    async function load() {
+      if (document.visibilityState === "hidden") return;
       try {
-        const [statsData, patternsData, usersData] = await Promise.all([
+        const [s, p, u] = await Promise.all([
           fetchJSON("/api/stats"),
           fetchJSON(`/api/patterns?limit=${MAX_PATTERNS}`),
           fetchJSON("/api/users/active?within=60"),
         ]);
-
-        if (!isActive) {
-          return;
-        }
-
+        if (!active) return;
         startTransition(() => {
-          setStats(statsData);
-          setPatterns(patternsData);
-          setActiveUsers(usersData.slice(0, MAX_ACTIVE_USERS));
+          setStats(s);
+          setPatterns(p);
+          setActiveUsers(u.slice(0, MAX_ACTIVE_USERS));
           setError("");
         });
-      } catch (snapshotError) {
-        if (isActive) {
-          setError("Dashboard snapshot could not be loaded.");
-        }
+      } catch {
+        if (active) setError("Could not reach the backend.");
       }
     }
 
-    loadSnapshot();
-    intervalId = window.setInterval(loadSnapshot, SNAPSHOT_INTERVAL_MS);
+    load();
+    timer = window.setInterval(load, SNAPSHOT_INTERVAL_MS);
 
-    function handleVisibilityChange() {
-      if (document.visibilityState === "visible") {
-        loadSnapshot();
-      }
-    }
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+    const onVisibility = () => { if (document.visibilityState === "visible") load(); };
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
-      isActive = false;
-      window.clearInterval(intervalId);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      active = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
 
+  // ── SSE stream ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    const source = new EventSource(`${API_BASE_URL}/api/stream`);
+    const src = new EventSource(`${API_BASE_URL}/api/stream`);
 
-    source.onopen = () => {
+    src.onopen = () => {
       setConnectionStatus("live");
       setError("");
     };
 
-    source.addEventListener("pattern", (event) => {
-      const nextPattern = JSON.parse(event.data);
+    src.addEventListener("pattern", (e) => {
+      const p = JSON.parse(e.data);
       startTransition(() => {
-        setPatterns((current) => mergePatternFeed(current, nextPattern));
-        setActiveUsers((current) =>
-          mergeActiveUserFeed(current, {
-            user_id: nextPattern.user_id,
-            current_page: nextPattern.page,
-            last_seen: nextPattern.detected_at,
+        setPatterns((cur) => mergePatternFeed(cur, p));
+        setActiveUsers((cur) =>
+          mergeActiveUserFeed(cur, {
+            user_id:      p.user_id,
+            current_page: p.page,
+            last_seen:    p.detected_at,
           }),
         );
       });
     });
 
-    source.addEventListener("stats", (event) => {
-      startTransition(() => {
-        setStats(JSON.parse(event.data));
-      });
+    src.addEventListener("stats", (e) => {
+      startTransition(() => setStats(JSON.parse(e.data)));
     });
 
-    source.onerror = () => {
+    src.onerror = () => {
       setConnectionStatus("reconnecting");
-      setError("Live stream disconnected. Retrying automatically.");
+      setError("Live stream disconnected — retrying automatically.");
     };
 
-    return () => {
-      source.close();
-    };
+    return () => src.close();
   }, []);
 
+  // ── User drill-down ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!selectedUserId) {
       setSelectedUserEvents([]);
       setUserEventsStatus("idle");
       return;
     }
-
-    let isActive = true;
+    let active = true;
     setUserEventsStatus("loading");
 
     fetchJSON(`/api/users/${encodeURIComponent(selectedUserId)}/events`)
-      .then((events) => {
-        if (!isActive) {
-          return;
-        }
-        setSelectedUserEvents(events.slice().reverse());
+      .then((evs) => {
+        if (!active) return;
+        setSelectedUserEvents(evs.slice().reverse());
         setUserEventsStatus("ready");
       })
       .catch(() => {
-        if (!isActive) {
-          return;
-        }
+        if (!active) return;
         setSelectedUserEvents([]);
         setUserEventsStatus("error");
       });
 
-    return () => {
-      isActive = false;
-    };
+    return () => { active = false; };
   }, [selectedUserId]);
 
+  // Auto-select first active user
   useEffect(() => {
     if (!selectedUserId && activeUsers[0]?.user_id) {
       setSelectedUserId(activeUsers[0].user_id);
     }
   }, [activeUsers, selectedUserId]);
 
-  const latestPattern = deferredPatterns[0];
+  // ── Resolve pattern ──────────────────────────────────────────────────────────
+  async function handleResolve(patternId) {
+    try {
+      const resolved = await fetchJSON(
+        `/api/patterns/${encodeURIComponent(patternId)}/resolve`,
+        { method: "PATCH" },
+      );
+      startTransition(() => {
+        setPatterns((cur) => cur.map((p) => (p.pattern_id === patternId ? resolved : p)));
+      });
+    } catch { /* best-effort */ }
+  }
+
+  // ── Filtered patterns ────────────────────────────────────────────────────────
   const visiblePatterns = useMemo(() => {
-    const query = deferredSearchTerm.trim().toLowerCase();
-
-    return deferredPatterns.filter((pattern) => {
-      const matchesType = filterType === "all" || pattern.type === filterType;
-      if (!matchesType) {
-        return false;
-      }
-      if (!query) {
-        return true;
-      }
-
+    const q = deferredSearch.trim().toLowerCase();
+    return deferredPatterns.filter((p) => {
+      if (filterType !== "all" && p.type !== filterType) return false;
+      if (filterSeverity !== "all" && p.severity !== filterSeverity) return false;
+      if (!q) return true;
       return (
-        pattern.user_id.toLowerCase().includes(query) ||
-        pattern.page.toLowerCase().includes(query) ||
-        pattern.explanation.toLowerCase().includes(query)
+        p.user_id.toLowerCase().includes(q) ||
+        p.page.toLowerCase().includes(q) ||
+        p.explanation.toLowerCase().includes(q)
       );
     });
-  }, [deferredPatterns, deferredSearchTerm, filterType]);
+  }, [deferredPatterns, deferredSearch, filterType, filterSeverity]);
 
+  const latestPattern  = deferredPatterns[0] ?? null;
+  const patternCount   = visiblePatterns.length;
+
+  // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <main className="page-shell">
-      <section className="hero">
-        <div className="hero__copy">
-          <span className="eyebrow">Behavior observability</span>
-          <h1>See user friction as it forms, not after it causes churn.</h1>
-          <p>
-            BehaviourLens watches live behavioral signals like hesitation, loops,
-            and abandonment so product teams can react while sessions are still active.
-          </p>
-        </div>
+    <div className="app">
+      <Header connectionStatus={connectionStatus} />
 
-        <div className="hero__status">
-          <div className={`status-badge status-badge--${connectionStatus}`}>
-            <span className="status-dot" />
-            <span>{connectionStatus}</span>
-          </div>
-          <p>
-            Backend stream:
-            <code>{API_BASE_URL}</code>
-          </p>
-          {error ? <p className="hero__error">{error}</p> : null}
-        </div>
-      </section>
+      {error && <div className="error-banner">{error}</div>}
 
-      <section className="metrics-grid">
-        <MetricCard
-          label="Total Events"
-          value={stats ? stats.total_events.toLocaleString() : "--"}
-          accent="accent-mint"
-          helper="Cumulative events processed since startup."
-        />
-        <MetricCard
-          label="Active Users"
-          value={stats ? stats.active_users : "--"}
-          accent="accent-sun"
-          helper="Users seen in the last 60 seconds."
-        />
-        <MetricCard
-          label="Patterns Detected"
-          value={stats ? stats.patterns_detected.toLocaleString() : "--"}
-          accent="accent-coral"
-          helper="Rule-based friction signals emitted by the engine."
-        />
-        <MetricCard
-          label="Abandonment Rate"
-          value={stats ? formatPercent(stats.abandonment_rate) : "--"}
-          accent="accent-sky"
-          helper="Abandonment patterns divided by total users observed."
-        />
-      </section>
+      <main className="content">
+        {/* ── Metrics ── */}
+        <section className="metrics">
+          <MetricCard
+            label="Total Events"
+            value={stats ? stats.total_events.toLocaleString() : "—"}
+            accent="green"
+            sub="Events processed since startup"
+          />
+          <MetricCard
+            label="Active Users"
+            value={stats ? stats.active_users : "—"}
+            accent="amber"
+            sub="Seen in last 60 seconds"
+          />
+          <MetricCard
+            label="Patterns Detected"
+            value={stats ? stats.patterns_detected.toLocaleString() : "—"}
+            accent="red"
+            sub="Friction signals emitted"
+          />
+          <MetricCard
+            label="Abandonment Rate"
+            value={stats ? formatPercent(stats.abandonment_rate) : "—"}
+            accent="blue"
+            sub="Abandonments / total users"
+          />
+        </section>
 
-      <section className="panel panel--controls">
-        <div className="controls">
-          <label className="control">
-            <span className="eyebrow">Pattern type</span>
-            <select value={filterType} onChange={(event) => setFilterType(event.target.value)}>
-              <option value="all">All patterns</option>
-              <option value="hesitation">Hesitation</option>
-              <option value="navigation-loop">Navigation loop</option>
-              <option value="abandonment">Abandonment</option>
-            </select>
-          </label>
+        {/* ── Workspace ── */}
+        <div className="workspace">
 
-          <label className="control control--search">
-            <span className="eyebrow">Search</span>
-            <input
-              type="search"
-              placeholder="Filter by user, page, or explanation"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-            />
-          </label>
-        </div>
-      </section>
-
-      <section className="content-grid">
-        <div className="panel panel--spotlight">
-          <div className="panel__header">
-            <span className="eyebrow">Latest alert</span>
-            <h2>Most recent pattern</h2>
-          </div>
-          {latestPattern ? (
-            <PatternCard pattern={latestPattern} />
-          ) : (
-            <div className="empty-state">
-              <h3>No patterns yet</h3>
-              <p>Start the simulator to watch live behavior signals appear here.</p>
-            </div>
-          )}
-        </div>
-
-        <div className="panel">
-          <div className="panel__header">
-            <span className="eyebrow">Session radar</span>
-            <h2>Active users</h2>
-          </div>
-          <div className="user-list">
-            {deferredActiveUsers.length > 0 ? (
-              deferredActiveUsers.map((user) => (
-                <UserRow
-                  key={user.user_id}
-                  user={user}
-                  isSelected={selectedUserId === user.user_id}
-                  onSelect={setSelectedUserId}
-                />
-              ))
-            ) : (
-              <p className="empty-copy">No active users in the last minute.</p>
-            )}
-          </div>
-        </div>
-      </section>
-
-      <section className="panel panel--detail">
-        <div className="panel__header">
-          <span className="eyebrow">Drill-down</span>
-          <h2>User event window</h2>
-        </div>
-
-        {selectedUserId ? (
-          <div className="detail-panel">
-            <div className="detail-panel__summary">
-              <strong>{selectedUserId}</strong>
-              <span>
-                {userEventsStatus === "loading"
-                  ? "Loading session events..."
-                  : `${selectedUserEvents.length} events in current window`}
-              </span>
+          {/* ── Feed panel ── */}
+          <div className="panel feed">
+            <div className="panel__head">
+              <span className="panel__title">Live pattern feed</span>
+              <span className="panel__count">{patternCount}</span>
             </div>
 
-            <div className="event-list">
-              {userEventsStatus === "error" ? (
-                <p className="empty-copy">Could not load this user&apos;s event history.</p>
-              ) : selectedUserEvents.length > 0 ? (
-                selectedUserEvents.map((event, index) => (
-                  <div
-                    key={`${event.timestamp}-${event.action}-${index}`}
-                    className="event-row"
-                  >
-                    <div>
-                      <strong>{formatEventLabel(event)}</strong>
-                      <span>{event.user_id}</span>
-                    </div>
-                    <time>{formatRelativeTime(event.timestamp)}</time>
-                  </div>
+            {/* Spotlight: always shows latest regardless of filters */}
+            <Spotlight pattern={latestPattern} />
+
+            {/* Filters */}
+            <div className="feed__controls">
+              <select
+                className="ctrl-select"
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+              >
+                <option value="all">All types</option>
+                <option value="hesitation">Hesitation</option>
+                <option value="navigation-loop">Navigation loop</option>
+                <option value="abandonment">Abandonment</option>
+              </select>
+
+              <select
+                className="ctrl-select"
+                value={filterSeverity}
+                onChange={(e) => setFilterSeverity(e.target.value)}
+              >
+                <option value="all">All severities</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+
+              <input
+                type="search"
+                className="ctrl-input"
+                placeholder="Search user, page, explanation…"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+
+            {/* Pattern list */}
+            <div className="feed__list">
+              {visiblePatterns.length > 0 ? (
+                visiblePatterns.map((p) => (
+                  <PatternRow key={p.pattern_id} pattern={p} onResolve={handleResolve} />
                 ))
               ) : (
-                <p className="empty-copy">Select an active user to inspect their live session.</p>
+                <div className="empty">
+                  <div className="empty__icon">◎</div>
+                  <div className="empty__title">No patterns yet</div>
+                  <div className="empty__sub">
+                    Run the simulator or adjust filters to see live behavior signals.
+                  </div>
+                </div>
               )}
             </div>
           </div>
-        ) : (
-          <p className="empty-copy">Active users will appear here once traffic is flowing.</p>
-        )}
-      </section>
 
-      <section className="panel panel--feed">
-        <div className="panel__header">
-          <span className="eyebrow">Live feed</span>
-          <h2>Detected patterns</h2>
-        </div>
+          {/* ── Sidebar ── */}
+          <div className="sidebar">
 
-        <div className="pattern-grid">
-          {visiblePatterns.length > 0 ? (
-            visiblePatterns.map((pattern) => (
-              <PatternCard key={pattern.pattern_id} pattern={pattern} />
-            ))
-          ) : (
-            <div className="empty-state">
-              <h3>No matching patterns</h3>
-              <p>Adjust the filter or search input to widen the live feed.</p>
+            {/* Active users */}
+            <div className="panel ulist">
+              <div className="panel__head">
+                <span className="panel__title">Active sessions</span>
+                <span className="panel__count">{deferredActiveUsers.length}</span>
+              </div>
+
+              <div className="ulist__scroll">
+                {deferredActiveUsers.length > 0 ? (
+                  deferredActiveUsers.map((u) => (
+                    <UserItem
+                      key={u.user_id}
+                      user={u}
+                      isSelected={selectedUserId === u.user_id}
+                      onSelect={setSelectedUserId}
+                    />
+                  ))
+                ) : (
+                  <div className="empty" style={{ padding: "28px 16px" }}>
+                    <div className="empty__title">No active users</div>
+                    <div className="empty__sub">Users appear here when traffic flows.</div>
+                  </div>
+                )}
+              </div>
             </div>
-          )}
+
+            {/* Event window */}
+            <div className="panel ewindow">
+              <div className="panel__head">
+                <span className="panel__title">Event window</span>
+                {selectedUserId && (
+                  <span className="panel__count">
+                    {userEventsStatus === "loading" ? "…" : selectedUserEvents.length}
+                  </span>
+                )}
+              </div>
+
+              {selectedUserId && (
+                <div className="ewindow__user">
+                  <span className="ewindow__user-id">{selectedUserId}</span>
+                  {userEventsStatus === "ready" && (
+                    <span className="ewindow__count">
+                      {selectedUserEvents.length} events in window
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <div className="ewindow__scroll">
+                {!selectedUserId ? (
+                  <div className="empty" style={{ padding: "28px 16px" }}>
+                    <div className="empty__title">No user selected</div>
+                    <div className="empty__sub">Click a session above to inspect events.</div>
+                  </div>
+                ) : userEventsStatus === "error" ? (
+                  <div className="empty" style={{ padding: "28px 16px" }}>
+                    <div className="empty__title">Failed to load</div>
+                    <div className="empty__sub">Could not retrieve this user's events.</div>
+                  </div>
+                ) : selectedUserEvents.length > 0 ? (
+                  selectedUserEvents.map((ev, i) => (
+                    <EventRow key={`${ev.timestamp}-${ev.action}-${i}`} event={ev} />
+                  ))
+                ) : (
+                  <div className="empty" style={{ padding: "28px 16px" }}>
+                    <div className="empty__sub">Loading events…</div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+          </div>
         </div>
-      </section>
-    </main>
+      </main>
+    </div>
   );
 }
