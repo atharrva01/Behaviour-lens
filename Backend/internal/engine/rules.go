@@ -3,10 +3,15 @@ package engine
 import (
 	"fmt"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"behaviourlens/internal/models"
 )
+
+// seqCounter ensures pattern IDs are unique even when two patterns fire
+// within the same millisecond for the same user.
+var seqCounter atomic.Int64
 
 // Detection thresholds — all durations in milliseconds.
 const (
@@ -39,6 +44,12 @@ func NewRuleEngine() *RuleEngine {
 // Returns all patterns detected on this call (may be empty).
 // Explanations are NOT set here — that is Phase 4 (Explain Engine).
 func (re *RuleEngine) Evaluate(state models.UserState) []models.Pattern {
+	// Do not fire behavioral patterns while the tab is hidden — the user is
+	// not actively looking at the page, so hesitation and loop signals are noise.
+	if !state.TabVisible {
+		return nil
+	}
+
 	now := time.Now().UnixMilli()
 	var detected []models.Pattern
 
@@ -71,9 +82,8 @@ func (re *RuleEngine) markDetected(userID, patternType, page string, now int64) 
 }
 
 func patternID(userID, patternType string, now int64) string {
-	// Simple unique ID: no external UUID package needed.
-	// Collisions are impossible within a single user's timeline.
-	return fmt.Sprintf("%s_%s_%d", userID, patternType, now)
+	seq := seqCounter.Add(1)
+	return fmt.Sprintf("%s_%s_%d_%d", userID, patternType, now, seq)
 }
 
 // ── hesitation ────────────────────────────────────────────────────────────────

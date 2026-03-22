@@ -12,6 +12,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -87,13 +88,18 @@ func (h *SSEHub) BroadcastStats(m models.SystemMetrics) {
 }
 
 // StartStatsTicker launches a goroutine that broadcasts SystemMetrics every interval.
-// It uses the provided metrics function rather than importing state directly.
-func (h *SSEHub) StartStatsTicker(interval time.Duration, getMetrics func() models.SystemMetrics) {
+// It stops cleanly when ctx is cancelled (e.g. on graceful shutdown).
+func (h *SSEHub) StartStatsTicker(ctx context.Context, interval time.Duration, getMetrics func() models.SystemMetrics) {
 	go func() {
 		t := time.NewTicker(interval)
 		defer t.Stop()
-		for range t.C {
-			h.BroadcastStats(getMetrics())
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				h.BroadcastStats(getMetrics())
+			}
 		}
 	}()
 }

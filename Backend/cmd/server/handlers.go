@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -46,7 +47,9 @@ func corsMiddleware(next http.Handler) http.Handler {
 // ── GET /api/patterns ─────────────────────────────────────────────────────────
 
 // patternsHandler returns detected patterns, most recent first.
-// Optional query param: ?limit=N (default 50, must be > 0).
+// Optional query params:
+//   - ?limit=N   (default 50, must be > 0)
+//   - ?severity=low|medium|high  (filter by severity)
 func patternsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -60,8 +63,52 @@ func patternsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// GetPatterns uses make() internally — always returns [] not null in JSON.
-	writeJSON(w, http.StatusOK, manager.GetPatterns(limit))
+	patterns := manager.GetPatterns(limit)
+
+	// Optional severity filter — applied after retrieval so limit still applies.
+	if severity := strings.TrimSpace(r.URL.Query().Get("severity")); severity != "" {
+		filtered := patterns[:0]
+		for _, p := range patterns {
+			if p.Severity == severity {
+				filtered = append(filtered, p)
+			}
+		}
+		patterns = filtered
+	}
+
+	writeJSON(w, http.StatusOK, patterns)
+}
+
+// ── PATCH /api/patterns/{id}/resolve ─────────────────────────────────────────
+
+// resolvePatternHandler marks a pattern as resolved and re-broadcasts it via SSE
+// so the dashboard can update the card in real time without a full reload.
+func resolvePatternHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Path: /api/patterns/{id}/resolve
+	path := strings.TrimPrefix(r.URL.Path, "/api/patterns/")
+	path = strings.TrimSuffix(path, "/resolve")
+	patternID := strings.TrimSpace(path)
+
+	if patternID == "" {
+		http.Error(w, "pattern_id missing from path", http.StatusBadRequest)
+		return
+	}
+
+	resolved, found := manager.ResolvePattern(patternID)
+	if !found {
+		http.Error(w, "Pattern not found", http.StatusNotFound)
+		return
+	}
+
+	// Broadcast the updated (resolved) pattern so live clients see the change.
+	hub.BroadcastPattern(resolved)
+
+	writeJSON(w, http.StatusOK, resolved)
 }
 
 // ── GET /api/stats ────────────────────────────────────────────────────────────

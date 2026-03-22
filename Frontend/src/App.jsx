@@ -15,7 +15,7 @@ const patternTone = {
 };
 
 const SNAPSHOT_INTERVAL_MS = 15000;
-const MAX_PATTERNS = 12;
+const MAX_PATTERNS = 20;
 const MAX_ACTIVE_USERS = 10;
 
 function formatRelativeTime(timestamp) {
@@ -77,12 +77,18 @@ const MetricCard = memo(function MetricCard({ label, value, accent, helper }) {
   );
 });
 
-const PatternCard = memo(function PatternCard({ pattern }) {
+const severityClass = {
+  low: "severity-low",
+  medium: "severity-medium",
+  high: "severity-high",
+};
+
+const PatternCard = memo(function PatternCard({ pattern, onResolve }) {
   return (
-    <article className={`pattern-card ${patternTone[pattern.type] || "tone-slate"}`}>
+    <article className={`pattern-card ${patternTone[pattern.type] || "tone-slate"}${pattern.resolved ? " pattern-card--resolved" : ""}`}>
       <div className="pattern-card__header">
         <span className="pill">{pattern.type}</span>
-        <span className="pattern-card__severity">{pattern.severity}</span>
+        <span className={`severity-badge ${severityClass[pattern.severity] || ""}`}>{pattern.severity}</span>
       </div>
       <h3>{pattern.page}</h3>
       <p>{pattern.explanation}</p>
@@ -90,6 +96,16 @@ const PatternCard = memo(function PatternCard({ pattern }) {
         <span>{pattern.user_id}</span>
         <span>{formatRelativeTime(pattern.detected_at)}</span>
       </div>
+      {!pattern.resolved && onResolve && (
+        <button
+          type="button"
+          className="resolve-btn"
+          onClick={() => onResolve(pattern.pattern_id)}
+        >
+          Mark resolved
+        </button>
+      )}
+      {pattern.resolved && <span className="resolved-badge">resolved</span>}
     </article>
   );
 });
@@ -117,6 +133,7 @@ export default function App() {
   const [connectionStatus, setConnectionStatus] = useState("connecting");
   const [error, setError] = useState("");
   const [filterType, setFilterType] = useState("all");
+  const [filterSeverity, setFilterSeverity] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUserId, setSelectedUserId] = useState("");
   const [selectedUserEvents, setSelectedUserEvents] = useState([]);
@@ -124,6 +141,21 @@ export default function App() {
   const deferredPatterns = useDeferredValue(patterns);
   const deferredActiveUsers = useDeferredValue(activeUsers);
   const deferredSearchTerm = useDeferredValue(searchTerm);
+
+  async function handleResolve(patternId) {
+    try {
+      const resolved = await fetchJSON(`/api/patterns/${encodeURIComponent(patternId)}/resolve`, {
+        method: "PATCH",
+      });
+      startTransition(() => {
+        setPatterns((current) =>
+          current.map((p) => (p.pattern_id === patternId ? resolved : p)),
+        );
+      });
+    } catch {
+      // Ignore — the resolve is best-effort; SSE will re-sync on next broadcast.
+    }
+  }
 
   useEffect(() => {
     let isActive = true;
@@ -256,13 +288,9 @@ export default function App() {
     const query = deferredSearchTerm.trim().toLowerCase();
 
     return deferredPatterns.filter((pattern) => {
-      const matchesType = filterType === "all" || pattern.type === filterType;
-      if (!matchesType) {
-        return false;
-      }
-      if (!query) {
-        return true;
-      }
+      if (filterType !== "all" && pattern.type !== filterType) return false;
+      if (filterSeverity !== "all" && pattern.severity !== filterSeverity) return false;
+      if (!query) return true;
 
       return (
         pattern.user_id.toLowerCase().includes(query) ||
@@ -270,7 +298,7 @@ export default function App() {
         pattern.explanation.toLowerCase().includes(query)
       );
     });
-  }, [deferredPatterns, deferredSearchTerm, filterType]);
+  }, [deferredPatterns, deferredSearchTerm, filterType, filterSeverity]);
 
   return (
     <main className="page-shell">
@@ -336,6 +364,16 @@ export default function App() {
             </select>
           </label>
 
+          <label className="control">
+            <span className="eyebrow">Severity</span>
+            <select value={filterSeverity} onChange={(event) => setFilterSeverity(event.target.value)}>
+              <option value="all">All severities</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </label>
+
           <label className="control control--search">
             <span className="eyebrow">Search</span>
             <input
@@ -355,7 +393,7 @@ export default function App() {
             <h2>Most recent pattern</h2>
           </div>
           {latestPattern ? (
-            <PatternCard pattern={latestPattern} />
+            <PatternCard pattern={latestPattern} onResolve={handleResolve} />
           ) : (
             <div className="empty-state">
               <h3>No patterns yet</h3>
@@ -438,7 +476,7 @@ export default function App() {
         <div className="pattern-grid">
           {visiblePatterns.length > 0 ? (
             visiblePatterns.map((pattern) => (
-              <PatternCard key={pattern.pattern_id} pattern={pattern} />
+              <PatternCard key={pattern.pattern_id} pattern={pattern} onResolve={handleResolve} />
             ))
           ) : (
             <div className="empty-state">
