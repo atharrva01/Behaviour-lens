@@ -1,20 +1,12 @@
 # BehaviourLens
 
-**Real-time user behavior observability — see friction as it forms, not after it causes churn.**
+**Real-time user behavior observability ,  see friction as it forms, not after it causes churn.**
 
-Most analytics tools tell you what happened yesterday. BehaviourLens tells you what's happening right now. It watches live user sessions, detects behavioral friction signals like hesitation, navigation loops, and checkout abandonment the moment they occur, and explains them in plain English on a live dashboard — while the user is still on the page.
+Most analytics tools tell you what happened yesterday. BehaviourLens tells you what's happening right now. It watches live user sessions, detects behavioral friction signals like hesitation, navigation loops, and checkout abandonment the moment they occur, and explains them in plain English on a live dashboard, while the user is still on the page.
 
-Built as a production-inspired system using Go, React, and Server-Sent Events. No external databases, no third-party services, no magic — just a clean event pipeline you can read end to end.
+Built as a production-inspired system using Go, React, and Server-Sent Events. No external databases, no third-party services, no magic , just a clean event pipeline you can read end to end.
 
----
-
-> **Screenshots** — Add screenshots of the running dashboard, the demo store, and the pattern feed here. Suggested shots:
-> - The full dashboard with live patterns flowing in
-> - The demo store (`/demo`) side by side with the dashboard
-> - A close-up of a hesitation pattern card with its explanation
-> - The active sessions sidebar with a user's event window open
-
----
+<img width="1920" height="1020" alt="image" src="https://github.com/user-attachments/assets/6ba5b33f-31da-4a88-9681-f13258394869" />
 
 ## What It Does
 
@@ -61,7 +53,7 @@ Your website or demo store
                        active sessions, event inspector
 ```
 
-The HTTP layer accepts events and returns immediately (`202 Accepted`). A background consumer goroutine does all the processing — the pipeline never blocks the ingest path. State is protected with a `sync.RWMutex` and the rule engine always works on a deep-copied snapshot, so there are zero lock contention issues between ingestion and detection.
+The HTTP layer accepts events and returns immediately (`202 Accepted`). A background consumer goroutine does all the processing  the pipeline never blocks the ingest path. State is protected with a `sync.RWMutex` and the rule engine always works on a deep-copied snapshot, so there are zero lock contention issues between ingestion and detection.
 
 ---
 
@@ -132,7 +124,7 @@ go run ./cmd/server
 You should see:
 
 ```
-2026/03/23 10:00:00 AI explanation disabled — using rule-based explanations
+2026/03/23 10:00:00 AI explanation disabled  using rule-based explanations
 2026/03/23 10:00:00 BehaviourLens server started on :8080
 ```
 
@@ -174,7 +166,7 @@ Open **http://localhost:5173** in your browser. The dashboard will load and show
 
 ### Step 4 — Generate traffic (two options)
 
-#### Option A — Built-in demo store (recommended for demos)
+#### Option A  Built-in demo store (recommended for demos)
 
 Open **http://localhost:8080/demo** in a second browser tab. This is a fully functional mini e-commerce store called *Verse* with the BehaviourLens tracker already embedded.
 
@@ -419,7 +411,7 @@ Replace `YOUR_BACKEND_URL` with wherever your backend is running.
 
 ## Built By
 
-**Atharva Ramesh Borade** (PST-25-0023) and **Aman Kumar** (PST-25-0011)
-1st Year — Product Developer track
+**Atharva Ramesh Borade** 
+1st Year,  Product Developer track
 
-This project was built to mirror how real companies build streaming observability systems — at a smaller, explainable scale. Every architectural decision (buffered channels, snapshot isolation, cooldown windows, SSE over WebSockets) was made for a reason that you could explain in an interview.
+This project was built to mirror how real companies build streaming observability systems, at a smaller, explainable scale. Every architectural decision (buffered channels, snapshot isolation, cooldown windows, SSE over WebSockets) was made for a reason that you could explain in an interview.
