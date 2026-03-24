@@ -57,44 +57,6 @@ The HTTP layer accepts events and returns immediately (`202 Accepted`). A backgr
 
 ---
 
-## Project Structure
-
-```
-Behaviour lens/
-├── Backend/
-│   ├── cmd/
-│   │   ├── server/
-│   │   │   ├── main.go         # Entry point, graceful shutdown, AI wiring
-│   │   │   ├── handlers.go     # HTTP handlers, CORS, severity filter, resolve endpoint
-│   │   │   ├── sse.go          # Server-Sent Events hub
-│   │   │   ├── demo.go         # Serves the built-in demo store
-│   │   │   └── demo.html       # Self-contained e-commerce demo (tracker pre-installed)
-│   │   └── simulator/
-│   │       └── main.go         # Virtual user load simulator (5 scenarios)
-│   └── internal/
-│       ├── engine/
-│       │   ├── rules.go        # Detection rules (hesitation, loop, abandonment)
-│       │   ├── rules_test.go   # 18 tests covering all rule logic
-│       │   ├── explain.go      # Rule-based explanation generator
-│       │   └── ai_explain.go   # Optional Claude AI explanation layer
-│       ├── state/
-│       │   ├── manager.go      # StateManager — sliding window, pattern store, metrics
-│       │   └── manager_test.go # 16 tests covering state management
-│       └── models/
-│           ├── event.go        # Event struct + valid action types
-│           ├── pattern.go      # Pattern struct + type/severity constants
-│           ├── user_state.go   # Per-user session state
-│           └── metrics.go      # SystemMetrics snapshot
-├── Frontend/
-│   └── src/
-│       ├── App.jsx             # Dashboard — metrics, feed, sessions, event inspector
-│       ├── styles.css          # Clean dark design system
-│       └── api.js              # Fetch wrapper
-└── README.md
-```
-
----
-
 ## Running Locally
 
 ### Prerequisites
